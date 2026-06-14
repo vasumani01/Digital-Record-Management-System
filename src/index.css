@@ -1,0 +1,167 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 174 72% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.625rem;
+
+    /* Sidebar */
+    --sidebar-bg: 222.2 84% 4.9%;
+    --sidebar-fg: 210 40% 98%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 217.2 32.6% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 174 72% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+
+    /* Sidebar */
+    --sidebar-bg: 217.2 32.6% 7%;
+    --sidebar-fg: 210 40% 98%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  .sidebar-nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+           transition-all duration-200 cursor-pointer select-none;
+  }
+
+  .sidebar-nav-item.active {
+    @apply bg-primary text-primary-foreground shadow-sm;
+  }
+
+  .sidebar-nav-item:not(.active) {
+    @apply text-slate-400 hover:text-white hover:bg-white/10;
+  }
+
+  .stats-card {
+    @apply relative overflow-hidden rounded-xl border bg-card p-6
+           shadow-sm hover:shadow-md transition-all duration-200;
+  }
+
+  .data-table-row {
+    @apply border-b border-border/50 transition-colors hover:bg-muted/50;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5
+           text-xs font-medium ring-1 ring-inset;
+  }
+
+  .badge-success {
+    @apply bg-green-50 text-green-700 ring-green-600/20
+           dark:bg-green-900/20 dark:text-green-400 dark:ring-green-400/20;
+  }
+
+  .badge-warning {
+    @apply bg-amber-50 text-amber-700 ring-amber-600/20
+           dark:bg-amber-900/20 dark:text-amber-400 dark:ring-amber-400/20;
+  }
+
+  .badge-danger {
+    @apply bg-red-50 text-red-700 ring-red-600/20
+           dark:bg-red-900/20 dark:text-red-400 dark:ring-red-400/20;
+  }
+
+  .badge-info {
+    @apply bg-blue-50 text-blue-700 ring-blue-600/20
+           dark:bg-blue-900/20 dark:text-blue-400 dark:ring-blue-400/20;
+  }
+
+  .badge-neutral {
+    @apply bg-slate-50 text-slate-700 ring-slate-600/20
+           dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-400/20;
+  }
+
+  .skeleton {
+    @apply bg-muted animate-pulse rounded-md;
+  }
+
+  .glass-card {
+    @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-md
+           border border-white/20 dark:border-slate-700/50 rounded-xl;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/40;
+}
+
+/* Shimmer animation */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--muted-foreground) / 0.1) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
