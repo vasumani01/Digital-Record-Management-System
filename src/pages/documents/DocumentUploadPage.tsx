@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, Send, CheckCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { UploadZone } from '@/components/common/UploadZone'
+import { automationService } from '@/services/automation'
 
 interface UploadFile {
   file: File
@@ -31,17 +32,26 @@ export function DocumentUploadPage() {
     if (!category) { toast.error('Please select a category.'); return }
 
     setUploading(true)
-    for (let i = 0; i < files.length; i++) {
-      setFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, status: 'uploading' } : f))
-      for (let p = 0; p <= 100; p += 20) {
-        await new Promise((r) => setTimeout(r, 100))
-        setFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, progress: p } : f))
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const item = files[i]
+        setFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, status: 'uploading' } : f))
+        
+        await automationService.uploadDocument(item.file, category, (p) => {
+          setFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, progress: p } : f))
+        })
+
+        setFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, status: 'done', progress: 100 } : f))
       }
-      setFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, status: 'done', progress: 100 } : f))
+      toast.success(`${files.length} file(s) uploaded successfully!`)
+      setDone(true)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to upload files.')
+      console.error(err)
+      setFiles((prev) => prev.map((f) => f.status === 'uploading' ? { ...f, status: 'error' } : f))
+    } finally {
+      setUploading(false)
     }
-    setUploading(false)
-    setDone(true)
-    toast.success(`${files.length} file(s) uploaded successfully!`)
   }
 
   if (done) {
