@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { UserPlus, Eye, Edit, Trash2, Upload, Filter } from 'lucide-react'
+import { UserPlus, Eye, Edit, Trash2, Upload, Filter, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useQuery, useMutation } from '@tanstack/react-query'
 
 import { DataTable, type Column } from '@/components/common/DataTable'
 import { SearchBar } from '@/components/common/SearchBar'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { SkeletonTable } from '@/components/common/SkeletonLoader'
 import { type Student } from '@/types'
-import { mockStudents } from '@/data/mockData'
+import { studentService } from '@/services/studentService'
 import { cn } from '@/lib/utils'
 
 const STATUS_STYLES: Record<Student['status'], string> = {
@@ -20,11 +22,27 @@ const STATUS_STYLES: Record<Student['status'], string> = {
 
 export function StudentListPage() {
   const navigate = useNavigate()
-  const [students, setStudents] = useState<Student[]>(mockStudents)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [gradeFilter, setGradeFilter] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+
+  const { data: students = [], isLoading, error, refetch } = useQuery<Student[]>({
+    queryKey: ['students'],
+    queryFn: studentService.getStudents,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: studentService.deleteStudent,
+    onSuccess: () => {
+      toast.success('Student record deleted successfully.')
+      refetch()
+      setDeleteId(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to delete student.')
+    }
+  })
 
   const filtered = students.filter((s) => {
     const matchStatus = !statusFilter || s.status === statusFilter
@@ -36,9 +54,7 @@ export function StudentListPage() {
 
   const handleDelete = () => {
     if (!deleteId) return
-    setStudents((prev) => prev.filter((s) => s.id !== deleteId))
-    setDeleteId(null)
-    toast.success('Student record deleted.')
+    deleteMutation.mutate(deleteId)
   }
 
   const columns: Column<Student>[] = [
@@ -116,46 +132,59 @@ export function StudentListPage() {
       </div>
 
       {/* Table */}
-      <DataTable<Student>
-        data={filtered}
-        columns={columns}
-        searchQuery={search}
-        searchFields={['full_name', 'student_id', 'parent_name', 'parent_email']}
-        exportFilename="students"
-        emptyMessage="No students found. Try adjusting your filters."
-        actions={(s: Student) => (
-          <div className="flex items-center justify-end gap-1">
-            <button
-              onClick={() => navigate(`/students/${s.id}`)}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              title="View"
-            >
-              <Eye className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => navigate(`/students/${s.id}/edit`)}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              title="Edit"
-            >
-              <Edit className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => toast('Document upload coming soon!', { icon: '📄' })}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              title="Upload Document"
-            >
-              <Upload className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setDeleteId(s.id)}
-              className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-muted-foreground hover:text-red-500"
-              title="Delete"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-      />
+      {isLoading ? (
+        <SkeletonTable rows={6} cols={6} />
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900/30 p-6 flex flex-col items-center text-center">
+          <AlertTriangle className="w-8 h-8 text-red-500 mb-3" />
+          <h3 className="font-semibold text-red-900 dark:text-red-400">Failed to load students</h3>
+          <p className="text-sm text-red-700 dark:text-red-500/80 mt-1 mb-4">{(error as any).message || 'An unexpected error occurred.'}</p>
+          <button onClick={() => refetch()} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-colors">
+            Try Again
+          </button>
+        </div>
+      ) : (
+        <DataTable<Student>
+          data={filtered}
+          columns={columns}
+          searchQuery={search}
+          searchFields={['full_name', 'student_id', 'parent_name', 'parent_email']}
+          exportFilename="students"
+          emptyMessage="No students found. Try adjusting your filters."
+          actions={(s: Student) => (
+            <div className="flex items-center justify-end gap-1">
+              <button
+                onClick={() => navigate(`/students/${s.id}`)}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                title="View"
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => navigate(`/students/${s.id}/edit`)}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                title="Edit"
+              >
+                <Edit className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => navigate(`/documents/upload?category=Student%20Records&owner=${s.student_id}`)}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                title="Upload Document"
+              >
+                <Upload className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setDeleteId(s.id)}
+                className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-muted-foreground hover:text-red-500"
+                title="Delete"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleteId}

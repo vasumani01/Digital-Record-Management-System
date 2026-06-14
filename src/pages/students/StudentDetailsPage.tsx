@@ -1,27 +1,61 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Edit, FileText, MessageSquare, Activity, User, Phone, Mail, MapPin } from 'lucide-react'
+import { ArrowLeft, Edit, FileText, MessageSquare, Activity, User, Phone, Mail, MapPin, Loader2, AlertCircle } from 'lucide-react'
 import { ActivityTimeline } from '@/components/common/ActivityTimeline'
-import { mockStudents, mockDocuments } from '@/data/mockData'
+import { useQuery } from '@tanstack/react-query'
+import { studentService } from '@/services/studentService'
+import { documentService } from '@/services/documentService'
 import { cn, formatDate } from '@/lib/utils'
 
 const tabs = ['Personal Info', 'Documents', 'Communication', 'Activity Logs'] as const
 type Tab = typeof tabs[number]
 
 export function StudentDetailsPage() {
-  const { id } = useParams()
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<Tab>('Personal Info')
 
-  const student = mockStudents.find((s) => s.id === id) || mockStudents[0]
-  const docs = mockDocuments.filter((d) => d.owner_id === id)
+  // Query student details
+  const { data: student, isLoading: studentLoading, error: studentError } = useQuery({
+    queryKey: ['student', id],
+    queryFn: () => studentService.getStudentById(id!),
+    enabled: !!id,
+  })
+
+  // Query student documents (we query by student_id or id)
+  const { data: docs = [], isLoading: docsLoading } = useQuery({
+    queryKey: ['student-documents', student?.student_id],
+    queryFn: () => documentService.getDocuments(student?.student_id),
+    enabled: !!student?.student_id,
+  })
 
   const statusColors = {
     active: 'badge-success',
     inactive: 'badge-neutral',
     transferred: 'badge-warning',
     graduated: 'badge-info',
+  }
+
+  if (studentLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    )
+  }
+
+  if (studentError || !student) {
+    return (
+      <div className="p-6 text-center border border-border rounded-xl bg-card max-w-xl mx-auto mt-10">
+        <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+        <h3 className="text-lg font-semibold mb-1">Failed to load student</h3>
+        <p className="text-muted-foreground text-sm mb-4">{(studentError as any)?.message || 'The student record could not be found.'}</p>
+        <button onClick={() => navigate('/students')} className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium">
+          Back to Students
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -36,7 +70,7 @@ export function StudentDetailsPage() {
           <p className="text-muted-foreground text-sm">{student.student_id} • Grade {student.grade}</p>
         </div>
         <span className={cn('badge', statusColors[student.status])}>
-          {student.status}
+          {student.status.charAt(0).toUpperCase() + student.status.slice(1)}
         </span>
         <button
           onClick={() => navigate(`/students/${student.id}/edit`)}
@@ -108,7 +142,11 @@ export function StudentDetailsPage() {
 
         {activeTab === 'Documents' && (
           <div className="space-y-3">
-            {docs.length === 0 ? (
+            {docsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 text-primary animate-spin" />
+              </div>
+            ) : docs.length === 0 ? (
               <div className="py-16 text-center text-muted-foreground">
                 <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
                 <p>No documents uploaded yet.</p>
@@ -138,8 +176,7 @@ export function StudentDetailsPage() {
         {activeTab === 'Activity Logs' && (
           <div className="rounded-xl border border-border bg-card p-5">
             <ActivityTimeline items={[
-              { id: 'a1', title: 'Student record created', description: 'Initial record added to the system', user: 'Dr. Kavitha Rajan', timestamp: student.created_at, iconBg: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400', icon: '✓' },
-              { id: 'a2', title: 'Profile updated', description: 'Guardian contact info updated', user: 'Mr. Suresh Babu', timestamp: student.updated_at, iconBg: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400', icon: '✎' },
+              { id: 'a1', title: 'Student record created', description: 'Initial record added to the system', user: 'System Trigger', timestamp: student.created_at, iconBg: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400', icon: '✓' },
             ]} />
           </div>
         )}

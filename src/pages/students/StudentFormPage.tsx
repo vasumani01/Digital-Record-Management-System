@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Student } from '@/types'
+import { studentService } from '@/services/studentService'
 
 interface StudentFormProps {
   initial?: Partial<Student>
@@ -31,8 +33,11 @@ function StudentForm({ initial = {}, onSubmit, isEdit = false }: StudentFormProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    await onSubmit(form)
-    setLoading(false)
+    try {
+      await onSubmit(form)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const fields: { key: string; label: string; type?: string; required?: boolean; span?: boolean }[] = [
@@ -89,7 +94,7 @@ function StudentForm({ initial = {}, onSubmit, isEdit = false }: StudentFormProp
           type="submit" disabled={loading}
           className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-60"
         >
-          <Save className="w-4 h-4" />
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {loading ? 'Saving...' : isEdit ? 'Update Student' : 'Create Student'}
         </motion.button>
       </div>
@@ -99,11 +104,22 @@ function StudentForm({ initial = {}, onSubmit, isEdit = false }: StudentFormProp
 
 export function CreateStudentPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
-  const handleSubmit = async (_data: Partial<Student>) => {
-    await new Promise((r) => setTimeout(r, 1000))
-    toast.success('Student created successfully!')
-    navigate('/students')
+  const mutation = useMutation({
+    mutationFn: studentService.createStudent,
+    onSuccess: () => {
+      toast.success('Student created successfully!')
+      queryClient.invalidateQueries({ queryKey: ['students'] })
+      navigate('/students')
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to create student.')
+    }
+  })
+
+  const handleSubmit = async (data: Partial<Student>) => {
+    await mutation.mutateAsync(data)
   }
 
   return (
@@ -125,18 +141,51 @@ export function CreateStudentPage() {
 }
 
 export function EditStudentPage() {
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const initial = {
-    student_id: 'STU-001', full_name: 'Aanya Sharma', grade: '10-A',
-    parent_name: 'Rajesh Sharma', parent_email: 'rajesh.sharma@email.com',
-    parent_phone: '+91 98765 43210', status: 'active' as const,
-    date_of_birth: '2010-03-15', address: '42, MG Road, Chennai, TN 600001',
+  const queryClient = useQueryClient()
+
+  const { data: student, isLoading, error } = useQuery<Student>({
+    queryKey: ['student', id],
+    queryFn: () => studentService.getStudentById(id!),
+    enabled: !!id,
+  })
+
+  const mutation = useMutation({
+    mutationFn: (data: Partial<Student>) => studentService.updateStudent(id!, data),
+    onSuccess: () => {
+      toast.success('Student updated successfully!')
+      queryClient.invalidateQueries({ queryKey: ['students'] })
+      queryClient.invalidateQueries({ queryKey: ['student', id] })
+      navigate('/students')
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to update student.')
+    }
+  })
+
+  const handleSubmit = async (data: Partial<Student>) => {
+    const { id: _, created_at, updated_at, ...cleanData } = data as any
+    await mutation.mutateAsync(cleanData)
   }
 
-  const handleSubmit = async (_data: Partial<Student>) => {
-    await new Promise((r) => setTimeout(r, 1000))
-    toast.success('Student updated successfully!')
-    navigate('/students')
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 text-center border border-border rounded-xl bg-card">
+        <p className="text-red-500 font-medium">Failed to load student details.</p>
+        <button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-primary text-white rounded-xl text-sm">
+          Go Back
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -147,11 +196,11 @@ export function EditStudentPage() {
         </button>
         <div>
           <h1 className="text-2xl font-bold">Edit Student</h1>
-          <p className="text-muted-foreground text-sm">{initial.full_name} ({initial.student_id})</p>
+          <p className="text-muted-foreground text-sm">{student?.full_name} ({student?.student_id})</p>
         </div>
       </div>
       <div className="rounded-xl border border-border bg-card p-6">
-        <StudentForm initial={initial} onSubmit={handleSubmit} isEdit />
+        <StudentForm initial={student} onSubmit={handleSubmit} isEdit />
       </div>
     </div>
   )
