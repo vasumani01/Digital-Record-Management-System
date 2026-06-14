@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Filter, LayoutList, GitBranch } from 'lucide-react'
+import { Filter, LayoutList, GitBranch, AlertTriangle } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { DataTable, type Column } from '@/components/common/DataTable'
 import { SearchBar } from '@/components/common/SearchBar'
 import { ActivityTimeline } from '@/components/common/ActivityTimeline'
+import { SkeletonTable } from '@/components/common/SkeletonLoader'
+import { auditService } from '@/services/auditService'
 import type { AuditLog } from '@/types'
-import { mockAuditLogs } from '@/data/mockData'
 import { cn, formatDateTime } from '@/lib/utils'
 
 const ACTION_STYLES: Record<string, string> = {
@@ -31,13 +33,18 @@ export function AuditLogsPage() {
   const [moduleFilter, setModuleFilter] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'timeline'>('table')
 
-  const filtered = mockAuditLogs.filter((l) => {
+  const { data: auditLogs = [], isLoading, error, refetch } = useQuery<AuditLog[]>({
+    queryKey: ['audit-logs'],
+    queryFn: auditService.getAuditLogs,
+  })
+
+  const filtered = auditLogs.filter((l) => {
     const matchAction = !actionFilter || l.action === actionFilter
     const matchModule = !moduleFilter || l.module === moduleFilter
     return matchAction && matchModule
   })
 
-  const modules = [...new Set(mockAuditLogs.map((l) => l.module))].sort()
+  const modules = [...new Set(auditLogs.map((l) => l.module))].sort()
 
   const columns: Column<AuditLog>[] = [
     { key: 'user_name', header: 'User', sortable: true,
@@ -91,7 +98,7 @@ export function AuditLogsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Audit Logs</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">{mockAuditLogs.length} total entries</p>
+          <p className="text-muted-foreground text-sm mt-0.5">{auditLogs.length} total entries</p>
         </div>
         <div className="flex items-center rounded-xl border border-border overflow-hidden">
           <button onClick={() => setViewMode('table')}
@@ -126,21 +133,34 @@ export function AuditLogsPage() {
         </div>
       </div>
 
-      <motion.div key={viewMode} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        {viewMode === 'table' ? (
-          <DataTable<AuditLog>
-            data={filtered} columns={columns}
-            searchQuery={search}
-            searchFields={['user_name', 'details', 'ip_address']}
-            exportFilename="audit_logs"
-            emptyMessage="No audit logs found."
-          />
-        ) : (
-          <div className="rounded-xl border border-border bg-card p-5">
-            <ActivityTimeline items={timelineItems} />
-          </div>
-        )}
-      </motion.div>
+      {isLoading ? (
+        <SkeletonTable rows={8} cols={6} />
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900/30 p-6 flex flex-col items-center text-center">
+          <AlertTriangle className="w-8 h-8 text-red-500 mb-3" />
+          <h3 className="font-semibold text-red-900 dark:text-red-400">Failed to load audit logs</h3>
+          <p className="text-sm text-red-700 dark:text-red-500/80 mt-1 mb-4">{(error as any).message || 'An unexpected error occurred.'}</p>
+          <button onClick={() => refetch()} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-colors">
+            Try Again
+          </button>
+        </div>
+      ) : (
+        <motion.div key={viewMode} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          {viewMode === 'table' ? (
+            <DataTable<AuditLog>
+              data={filtered} columns={columns}
+              searchQuery={search}
+              searchFields={['user_name', 'details', 'ip_address']}
+              exportFilename="audit_logs"
+              emptyMessage="No audit logs found."
+            />
+          ) : (
+            <div className="rounded-xl border border-border bg-card p-5">
+              <ActivityTimeline items={timelineItems} />
+            </div>
+          )}
+        </motion.div>
+      )}
     </div>
   )
 }

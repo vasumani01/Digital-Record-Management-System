@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import type { User, UserRole } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { auditService } from '@/services/auditService'
 
 interface AuthContextValue {
   user: User | null
@@ -64,9 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profile = await fetchProfile(session.user.id, session.user.email || '')
         if (active && profile) {
           setUser(profile)
+          // Log login event
+          auditService.logAction('LOGIN', 'Auth', `Staff logged in: ${profile.full_name} (${profile.role})`)
         }
         setIsLoading(false)
       } else if (event === 'SIGNED_OUT') {
+        // Log logout event
+        auditService.logAction('LOGOUT', 'Auth', 'Staff logged out')
         setUser(null)
         setIsLoading(false)
       }

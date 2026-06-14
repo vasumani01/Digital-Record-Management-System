@@ -68,6 +68,7 @@ export interface Document {
   owner_id: string
   owner_name: string
   file_url: string
+  file_path?: string
   file_type: string
   file_size: number
   version: number
