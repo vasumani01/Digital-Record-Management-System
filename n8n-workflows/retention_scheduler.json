@@ -1,0 +1,229 @@
+{
+  "name": "DRMS - Annual Auto-Archiving and Retention Policy Scanner",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "value": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Weekly Scheduler",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://gmtltixyfucymvlfzkuf.supabase.co/rest/v1/documents?status=eq.active",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-active-docs",
+      "name": "Fetch Active Documents",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "retention-check",
+              "leftValue": "={{ $json.created_at }}",
+              "rightValue": "={{ DateTime.now().minus({ years: 5 }).toISO() }}",
+              "operator": "before"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "retention-filter",
+      "name": "Filter Outlived Records (> 5 Years)",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://gmtltixyfucymvlfzkuf.supabase.co/rest/v1/documents?id=eq.{{ $json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "archived"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-archive-doc",
+      "name": "Archive Document in DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        910,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gmtltixyfucymvlfzkuf.supabase.co/rest/v1/audit_logs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_name",
+              "value": "System Scheduler"
+            },
+            {
+              "name": "action",
+              "value": "UPDATE"
+            },
+            {
+              "name": "module",
+              "value": "Documents"
+            },
+            {
+              "name": "details",
+              "value": "=Auto-archived outlived document: {{ $json.name }} (ID: {{ $json.id }}) under retention compliance rules."
+            },
+            {
+              "name": "ip_address",
+              "value": "127.0.0.1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-audit-log",
+      "name": "Log Action to Audit Trail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1130,
+        280
+      ]
+    }
+  ],
+  "connections": {
+    "Weekly Scheduler": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Active Documents": {
+      "main": [
+        [
+          {
+            "node": "Filter Outlived Records (> 5 Years)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Outlived Records (> 5 Years)": {
+      "main": [
+        [
+          {
+            "node": "Archive Document in DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive Document in DB": {
+      "main": [
+        [
+          {
+            "node": "Log Action to Audit Trail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "drms-retention-scanner"
+}

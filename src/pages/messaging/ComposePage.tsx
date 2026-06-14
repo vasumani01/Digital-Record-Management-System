@@ -20,8 +20,8 @@ export function ComposePage() {
   })
 
   const sendMutation = useMutation({
-    mutationFn: (args: { subject: string; body: string; count: number }) =>
-      messageService.sendMessage(args.subject, args.body, args.count),
+    mutationFn: (args: { subject: string; body: string; recipients: any[] }) =>
+      messageService.sendMessage(args.subject, args.body, args.recipients),
     onSuccess: () => {
       toast.success('Message dispatched and logged successfully.')
       setSent(true)
@@ -49,7 +49,7 @@ export function ComposePage() {
     sendMutation.mutate({
       subject,
       body,
-      count: recipients.length
+      recipients
     })
   }
 

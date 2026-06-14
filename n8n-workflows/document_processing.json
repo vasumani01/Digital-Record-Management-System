@@ -1,0 +1,249 @@
+{
+  "name": "DRMS - Document Upload, Storage, and OCR Indexing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "drms-upload",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://gmtltixyfucymvlfzkuf.supabase.co/storage/v1/object/documents/general/{{ $json.body.category.toLowerCase().replace(/\\s+/g, '_') }}/{{ Date.now() }}_{{ $binary.file.fileName }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "={{ $binary.file.mimeType }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputBinaryDataKey": "file",
+        "options": {}
+      },
+      "id": "supabase-storage",
+      "name": "Upload to Supabase Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {}
+      },
+      "id": "openai-ocr",
+      "name": "OpenAI Vision OCR",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.1,
+      "position": [
+        690,
+        300
+      ],
+      "notesInFlow": true,
+      "notes": "Extracts text content from uploaded images or PDF sheets"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gmtltixyfucymvlfzkuf.supabase.co/rest/v1/documents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $binary.file.fileName }}"
+            },
+            {
+              "name": "file_path",
+              "value": "=general/{{ $json.body.category.toLowerCase().replace(/\\s+/g, '_') }}/{{ Date.now() }}_{{ $binary.file.fileName }}"
+            },
+            {
+              "name": "file_type",
+              "value": "={{ $binary.file.fileExtension.toUpperCase() }}"
+            },
+            {
+              "name": "category",
+              "value": "={{ $json.body.category }}"
+            },
+            {
+              "name": "file_size",
+              "value": "={{ $binary.file.fileSize }}"
+            },
+            {
+              "name": "ocr_indexed",
+              "value": "true"
+            },
+            {
+              "name": "ocr_content",
+              "value": "={{ $node[\"OpenAI Vision OCR\"].json[\"choices\"][0][\"message\"][\"content\"] }}"
+            },
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "version",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-db-insert",
+      "name": "Insert Document Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        910,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gmtltixyfucymvlfzkuf.supabase.co/rest/v1/notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "ocr_completed"
+            },
+            {
+              "name": "title",
+              "value": "Document OCR Complete"
+            },
+            {
+              "name": "message",
+              "value": "=Successfully uploaded and indexed: {{ $binary.file.fileName }}"
+            },
+            {
+              "name": "is_read",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-notification",
+      "name": "Create UI Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1130,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Upload to Supabase Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Supabase Storage": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Vision OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Vision OCR": {
+      "main": [
+        [
+          {
+            "node": "Insert Document Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Document Metadata": {
+      "main": [
+        [
+          {
+            "node": "Create UI Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "drms-doc-processing"
+}

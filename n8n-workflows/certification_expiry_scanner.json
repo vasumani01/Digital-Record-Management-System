@@ -1,0 +1,252 @@
+{
+  "name": "DRMS - Compliance Certificate Expiry Alerts Scanner",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "value": 1
+            }
+          ]
+        }
+      },
+      "id": "daily-trigger",
+      "name": "Daily Scheduler",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://gmtltixyfucymvlfzkuf.supabase.co/rest/v1/certifications?status=neq.expired",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-certs",
+      "name": "Fetch Active Certifications",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "expiry-90d-check",
+              "leftValue": "={{ $json.expiry_date }}",
+              "rightValue": "={{ DateTime.now().plus({ days: 90 }).toISO() }}",
+              "operator": "before"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "expiry-filter",
+      "name": "Filter Expirations (< 90 Days)",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://gmtltixyfucymvlfzkuf.supabase.co/rest/v1/certifications?id=eq.{{ $json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "={{ DateTime.fromISO($json.expiry_date) < DateTime.now() ? 'expired' : 'expiring' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-cert-status",
+      "name": "Update Status in Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        910,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gmtltixyfucymvlfzkuf.supabase.co/rest/v1/notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "certification_expiry"
+            },
+            {
+              "name": "title",
+              "value": "=Certification Expiry Warning"
+            },
+            {
+              "name": "message",
+              "value": "=Certificate '{{ $json.name }}' for staff member '{{ $json.employee_name }}' is expiring on {{ $json.expiry_date }}."
+            },
+            {
+              "name": "is_read",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "insert-admin-notification",
+      "name": "Alert Admin in UI Panel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1130,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "DRMS System <no-reply@school.edu>",
+        "toEmail": "=YOUR_STAFF_EMAIL_HERE",
+        "subject": "=Action Required: Compliance Certification Expiring Soon",
+        "html": "=<h3>Compliance Expiry Alert</h3><p>Dear Staff Member,</p><p>This is a system notice that your certification <strong>{{ $json.name }}</strong> (Issued by: {{ $json.issued_by }}) will expire on <strong>{{ $json.expiry_date }}</strong>.</p><p>Please upload a renewed copy to your employee profile in the Digital Record Management System as soon as possible.</p><p>Thank you,</p><p>DRMS Compliance Administration Team</p>"
+      },
+      "id": "email-node",
+      "name": "Send Staff Email Reminder",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Daily Scheduler": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Certifications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Active Certifications": {
+      "main": [
+        [
+          {
+            "node": "Filter Expirations (< 90 Days)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Expirations (< 90 Days)": {
+      "main": [
+        [
+          {
+            "node": "Update Status in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status in Supabase": {
+      "main": [
+        [
+          {
+            "node": "Alert Admin in UI Panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Admin in UI Panel": {
+      "main": [
+        [
+          {
+            "node": "Send Staff Email Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "drms-certification-expiry"
+}

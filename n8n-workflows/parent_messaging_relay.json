@@ -1,0 +1,132 @@
+{
+  "name": "DRMS - Parent Messaging Broadcast Relay",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "drms-send-message",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplit": "recipients",
+        "options": {}
+      },
+      "id": "split-recipients",
+      "name": "Split Recipients List",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1.1,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "DRMS Alert System <no-reply@school.edu>",
+        "toEmail": "={{ $json.parent_email }}",
+        "subject": "={{ $node[\"Webhook Trigger\"].json.body.subject }}",
+        "html": "=<h3>School Announcement Notice</h3><p>Dear {{ $json.parent_name }},</p><p>You are receiving this notification regarding your student, <strong>{{ $json.student_name }}</strong>:</p><div style=\"padding: 12px; background-color: #f3f4f6; border-left: 4px solid #3b82f6; margin: 15px 0;\">{{ $node[\"Webhook Trigger\"].json.body.body }}</div><p>If you have any questions, please reply directly to this notification or contact the administration desk.</p><p>Best regards,</p><p>Digital Record Management System Desk Office</p>"
+      },
+      "id": "email-node",
+      "name": "Email Parent",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        690,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://gmtltixyfucymvlfzkuf.supabase.co/rest/v1/messages?id=eq.{{ $node[\"Webhook Trigger\"].json.body.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "delivered"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-update-status",
+      "name": "Mark Message Delivered",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        910,
+        280
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Split Recipients List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Recipients List": {
+      "main": [
+        [
+          {
+            "node": "Email Parent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Parent": {
+      "main": [
+        [
+          {
+            "node": "Mark Message Delivered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "drms-parent-messaging"
+}

@@ -12,7 +12,7 @@ export const messageService = {
     return data as Message[]
   },
 
-  async sendMessage(subject: string, body: string, recipientCount: number): Promise<Message> {
+  async sendMessage(subject: string, body: string, recipients: any[]): Promise<Message> {
     const { data: { user } } = await supabase.auth.getUser()
 
     // Get sender profile details
@@ -22,20 +22,47 @@ export const messageService = {
       .eq('id', user?.id)
       .single()
 
+    const messagePayload = {
+      subject,
+      body,
+      sender_id: user?.id,
+      sender_name: profile?.full_name || 'Admin',
+      recipient_count: recipients.length,
+      status: 'sent',
+      recipients: recipients.map((r) => ({
+        student_id: r.student_id,
+        student_name: r.full_name,
+        parent_name: r.parent_name,
+        parent_email: r.parent_email
+      }))
+    }
+
     const { data, error } = await supabase
       .from('messages')
-      .insert({
-        subject,
-        body,
-        sender_id: user?.id,
-        sender_name: profile?.full_name || 'Admin',
-        recipient_count: recipientCount,
-        status: 'sent'
-      })
+      .insert(messagePayload)
       .select()
       .single()
 
     if (error) throw error
+
+    // Call n8n Parent Messaging Relay webhook
+    try {
+      await fetch('https://vasuoff.app.n8n.cloud/webhook-test/drms-send-message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          id: data.id,
+          subject,
+          body,
+          recipients: messagePayload.recipients
+        })
+      })
+    } catch (err) {
+      console.warn('n8n Messaging Webhook relay offline or returned error:', err)
+    }
+
     return data as Message
   }
 }
