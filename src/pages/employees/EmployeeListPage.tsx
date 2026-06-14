@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { UserPlus, Eye, Edit, Trash2 } from 'lucide-react'
+import { UserPlus, Eye, Edit, Trash2, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { DataTable, type Column } from '@/components/common/DataTable'
 import { SearchBar } from '@/components/common/SearchBar'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { SkeletonTable } from '@/components/common/SkeletonLoader'
 import type { Employee } from '@/types'
-import { mockEmployees } from '@/data/mockData'
+import { employeeService } from '@/services/employeeService'
 import { cn } from '@/lib/utils'
 
 const STATUS_STYLES: Record<Employee['status'], string> = {
@@ -19,10 +21,26 @@ const STATUS_STYLES: Record<Employee['status'], string> = {
 
 export function EmployeeListPage() {
   const navigate = useNavigate()
-  const [employees, setEmployees] = useState<Employee[]>(mockEmployees)
   const [search, setSearch] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+
+  const { data: employees = [], isLoading, error, refetch } = useQuery<Employee[]>({
+    queryKey: ['employees'],
+    queryFn: employeeService.getEmployees,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: employeeService.deleteEmployee,
+    onSuccess: () => {
+      toast.success('Employee record deleted successfully.')
+      refetch()
+      setDeleteId(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to delete employee.')
+    }
+  })
 
   const departments = [...new Set(employees.map((e) => e.department))].sort()
 
@@ -30,9 +48,7 @@ export function EmployeeListPage() {
 
   const handleDelete = () => {
     if (!deleteId) return
-    setEmployees((prev) => prev.filter((e) => e.id !== deleteId))
-    setDeleteId(null)
-    toast.success('Employee record deleted.')
+    deleteMutation.mutate(deleteId)
   }
 
   const columns: Column<Employee>[] = [
@@ -91,27 +107,40 @@ export function EmployeeListPage() {
         </select>
       </div>
 
-      <DataTable<Employee>
-        data={filtered}
-        columns={columns}
-        searchQuery={search}
-        searchFields={['name', 'employee_id', 'email', 'department', 'position']}
-        exportFilename="employees"
-        emptyMessage="No employees found."
-        actions={(e: Employee) => (
-          <div className="flex items-center justify-end gap-1">
-            <button onClick={() => navigate(`/employees/${e.id}`)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground" title="View">
-              <Eye className="w-4 h-4" />
-            </button>
-            <button onClick={() => navigate(`/employees/${e.id}/edit`)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground" title="Edit">
-              <Edit className="w-4 h-4" />
-            </button>
-            <button onClick={() => setDeleteId(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500" title="Delete">
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-      />
+      {isLoading ? (
+        <SkeletonTable rows={6} cols={6} />
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900/30 p-6 flex flex-col items-center text-center">
+          <AlertTriangle className="w-8 h-8 text-red-500 mb-3" />
+          <h3 className="font-semibold text-red-900 dark:text-red-400">Failed to load employees</h3>
+          <p className="text-sm text-red-700 dark:text-red-500/80 mt-1 mb-4">{(error as any).message || 'An unexpected error occurred.'}</p>
+          <button onClick={() => refetch()} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-colors">
+            Try Again
+          </button>
+        </div>
+      ) : (
+        <DataTable<Employee>
+          data={filtered}
+          columns={columns}
+          searchQuery={search}
+          searchFields={['name', 'employee_id', 'email', 'department', 'position']}
+          exportFilename="employees"
+          emptyMessage="No employees found."
+          actions={(e: Employee) => (
+            <div className="flex items-center justify-end gap-1">
+              <button onClick={() => navigate(`/employees/${e.id}`)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground" title="View">
+                <Eye className="w-4 h-4" />
+              </button>
+              <button onClick={() => navigate(`/employees/${e.id}/edit`)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground" title="Edit">
+                <Edit className="w-4 h-4" />
+              </button>
+              <button onClick={() => setDeleteId(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500" title="Delete">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleteId}

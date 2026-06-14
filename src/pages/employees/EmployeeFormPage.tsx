@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Employee } from '@/types'
+import { employeeService } from '@/services/employeeService'
 
 function EmployeeForm({ initial = {}, onSubmit, isEdit = false }: {
   initial?: Partial<Employee>; onSubmit: (d: Partial<Employee>) => Promise<void>; isEdit?: boolean
@@ -24,8 +26,13 @@ function EmployeeForm({ initial = {}, onSubmit, isEdit = false }: {
   const u = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true)
-    await onSubmit(form); setLoading(false)
+    e.preventDefault()
+    setLoading(true)
+    try {
+      await onSubmit(form)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -53,7 +60,7 @@ function EmployeeForm({ initial = {}, onSubmit, isEdit = false }: {
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1.5">Status</label>
           <select value={form.status} onChange={(e) => u('status', e.target.value)}
-            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl bg-background focus:outline-none">
+            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30">
             {['active', 'inactive', 'on_leave', 'terminated'].map((s) => (
               <option key={s} value={s}>{s.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
             ))}
@@ -66,7 +73,8 @@ function EmployeeForm({ initial = {}, onSubmit, isEdit = false }: {
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
           type="submit" disabled={loading}
           className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-60">
-          <Save className="w-4 h-4" /> {loading ? 'Saving...' : isEdit ? 'Update' : 'Create Employee'}
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {loading ? 'Saving...' : isEdit ? 'Update Employee' : 'Create Employee'}
         </motion.button>
       </div>
     </form>
@@ -75,11 +83,24 @@ function EmployeeForm({ initial = {}, onSubmit, isEdit = false }: {
 
 export function CreateEmployeePage() {
   const navigate = useNavigate()
-  const handleSubmit = async (_d: Partial<Employee>) => {
-    await new Promise((r) => setTimeout(r, 1000))
-    toast.success('Employee created!')
-    navigate('/employees')
+  const queryClient = useQueryClient()
+
+  const mutation = useMutation({
+    mutationFn: employeeService.createEmployee,
+    onSuccess: () => {
+      toast.success('Employee created successfully!')
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      navigate('/employees')
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to create employee.')
+    }
+  })
+
+  const handleSubmit = async (d: Partial<Employee>) => {
+    await mutation.mutateAsync(d)
   }
+
   return (
     <div className="max-w-3xl space-y-5">
       <div className="flex items-center gap-3">
@@ -95,27 +116,65 @@ export function CreateEmployeePage() {
 }
 
 export function EditEmployeePage() {
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const initial: Partial<Employee> = {
-    employee_id: 'EMP-001', name: 'Dr. Kavitha Rajan', department: 'Teaching',
-    position: 'Head of Science', email: 'kavitha.rajan@school.edu',
-    phone: '+91 98765 11111', status: 'active', hire_date: '2018-07-15',
+  const queryClient = useQueryClient()
+
+  const { data: employee, isLoading, error } = useQuery<Employee>({
+    queryKey: ['employee', id],
+    queryFn: () => employeeService.getEmployeeById(id!),
+    enabled: !!id,
+  })
+
+  const mutation = useMutation({
+    mutationFn: (d: Partial<Employee>) => employeeService.updateEmployee(id!, d),
+    onSuccess: () => {
+      toast.success('Employee updated successfully!')
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employee', id] })
+      navigate('/employees')
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to update employee.')
+    }
+  })
+
+  const handleSubmit = async (d: Partial<Employee>) => {
+    const { id: _, created_at, updated_at, ...cleanData } = d as any
+    await mutation.mutateAsync(cleanData)
   }
-  const handleSubmit = async (_d: Partial<Employee>) => {
-    await new Promise((r) => setTimeout(r, 1000))
-    toast.success('Employee updated!')
-    navigate('/employees')
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    )
   }
+
+  if (error) {
+    return (
+      <div className="p-6 text-center border border-border rounded-xl bg-card">
+        <p className="text-red-500 font-medium">Failed to load employee details.</p>
+        <button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-primary text-white rounded-xl text-sm">
+          Go Back
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl space-y-5">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-muted"><ArrowLeft className="w-5 h-5" /></button>
         <div>
           <h1 className="text-2xl font-bold">Edit Employee</h1>
-          <p className="text-muted-foreground text-sm">{initial.name}</p>
+          <p className="text-muted-foreground text-sm">{employee?.name} ({employee?.employee_id})</p>
         </div>
       </div>
-      <div className="rounded-xl border border-border bg-card p-6"><EmployeeForm initial={initial} onSubmit={handleSubmit} isEdit /></div>
+      <div className="rounded-xl border border-border bg-card p-6">
+        <EmployeeForm initial={employee} onSubmit={handleSubmit} isEdit />
+      </div>
     </div>
   )
 }

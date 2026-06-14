@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Edit, Award, FileText, Activity, Briefcase, Mail, Phone, Calendar } from 'lucide-react'
+import { ArrowLeft, Edit, Award, FileText, Briefcase, Mail, Phone, Calendar, Loader2, AlertCircle } from 'lucide-react'
 import { ActivityTimeline } from '@/components/common/ActivityTimeline'
-import { mockEmployees, mockCertifications, mockDocuments } from '@/data/mockData'
+import { useQuery } from '@tanstack/react-query'
+import { employeeService } from '@/services/employeeService'
+import { documentService } from '@/services/documentService'
+import { certificationService } from '@/services/certificationService'
 import { cn, formatDate, getCertificationStatus } from '@/lib/utils'
 
 const tabs = ['Profile', 'Certifications', 'Documents', 'Activity Logs'] as const
@@ -12,13 +15,51 @@ type Tab = typeof tabs[number]
 const STATUS_STYLES = { valid: 'badge-success', expiring: 'badge-warning', expired: 'badge-danger' }
 
 export function EmployeeDetailsPage() {
-  const { id } = useParams()
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<Tab>('Profile')
 
-  const emp = mockEmployees.find((e) => e.id === id) || mockEmployees[0]
-  const certs = mockCertifications.filter((c) => c.employee_id === id || c.employee_id === emp.id)
-  const docs = mockDocuments.filter((d) => d.owner_id === id || d.owner_id === emp.id)
+  // Query employee details
+  const { data: emp, isLoading: empLoading, error: empError } = useQuery({
+    queryKey: ['employee', id],
+    queryFn: () => employeeService.getEmployeeById(id!),
+    enabled: !!id,
+  })
+
+  // Query employee certifications
+  const { data: certs = [], isLoading: certsLoading } = useQuery({
+    queryKey: ['employee-certifications', emp?.employee_id],
+    queryFn: () => certificationService.getCertifications(emp?.employee_id),
+    enabled: !!emp?.employee_id,
+  })
+
+  // Query employee documents
+  const { data: docs = [], isLoading: docsLoading } = useQuery({
+    queryKey: ['employee-documents', emp?.employee_id],
+    queryFn: () => documentService.getDocuments(emp?.employee_id),
+    enabled: !!emp?.employee_id,
+  })
+
+  if (empLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    )
+  }
+
+  if (empError || !emp) {
+    return (
+      <div className="p-6 text-center border border-border rounded-xl bg-card max-w-xl mx-auto mt-10">
+        <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+        <h3 className="text-lg font-semibold mb-1">Failed to load employee</h3>
+        <p className="text-muted-foreground text-sm mb-4">{(empError as any)?.message || 'The employee record could not be found.'}</p>
+        <button onClick={() => navigate('/employees')} className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium">
+          Back to Employees
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-4xl space-y-5">
@@ -78,7 +119,11 @@ export function EmployeeDetailsPage() {
 
         {activeTab === 'Certifications' && (
           <div className="space-y-3">
-            {certs.length === 0 ? (
+            {certsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 text-primary animate-spin" />
+              </div>
+            ) : certs.length === 0 ? (
               <div className="py-16 text-center text-muted-foreground">
                 <Award className="w-10 h-10 mx-auto mb-3 opacity-30" />
                 <p>No certifications found.</p>
@@ -107,7 +152,11 @@ export function EmployeeDetailsPage() {
 
         {activeTab === 'Documents' && (
           <div className="space-y-3">
-            {docs.length === 0 ? (
+            {docsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 text-primary animate-spin" />
+              </div>
+            ) : docs.length === 0 ? (
               <div className="py-16 text-center text-muted-foreground">
                 <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" /><p>No documents found.</p>
               </div>
@@ -127,8 +176,7 @@ export function EmployeeDetailsPage() {
         {activeTab === 'Activity Logs' && (
           <div className="rounded-xl border border-border bg-card p-5">
             <ActivityTimeline items={[
-              { id: 'ea1', title: 'Employee record created', description: 'Added to the system', user: 'Admin', timestamp: emp.created_at, iconBg: 'bg-green-100 text-green-600', icon: '✓' },
-              { id: 'ea2', title: 'Profile last updated', user: 'Admin', timestamp: emp.updated_at, iconBg: 'bg-blue-100 text-blue-600', icon: '✎' },
+              { id: 'ea1', title: 'Employee record created', description: 'Added to the system', user: 'System Trigger', timestamp: emp.created_at, iconBg: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400', icon: '✓' }
             ]} />
           </div>
         )}
