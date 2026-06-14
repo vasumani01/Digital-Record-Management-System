@@ -1,30 +1,31 @@
 import { motion } from 'framer-motion'
 import {
   Users, UserCheck, FileText, Search, Award, MessageSquare,
-  LogIn, Upload, UserPlus, Edit, Clock, Bell, Loader,
+  LogIn, Upload, UserPlus, Edit, Clock, Bell, Loader, Loader2, AlertCircle
 } from 'lucide-react'
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from 'recharts'
-
+import { useQuery } from '@tanstack/react-query'
 import { StatsCard } from '@/components/common/StatsCard'
 import { ActivityTimeline } from '@/components/common/ActivityTimeline'
 import { useAuth } from '@/contexts/AuthContext'
-import { mockDashboardStats, mockRecentActivity } from '@/data/mockData'
-import { mockCertifications } from '@/data/mockData'
+import { dashboardService } from '@/services/dashboardService'
+import { auditService } from '@/services/auditService'
+import { certificationService } from '@/services/certificationService'
 import { getCertificationStatus, formatDate, getDaysUntil } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
 const ACTIVITY_ICONS: Record<string, { icon: React.ReactNode; bg: string }> = {
-  login: { icon: <LogIn className="w-3.5 h-3.5" />, bg: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' },
-  upload: { icon: <Upload className="w-3.5 h-3.5" />, bg: 'bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-400' },
-  create: { icon: <UserPlus className="w-3.5 h-3.5" />, bg: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400' },
-  update: { icon: <Edit className="w-3.5 h-3.5" />, bg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400' },
-  message: { icon: <MessageSquare className="w-3.5 h-3.5" />, bg: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400' },
-  delete: { icon: <Search className="w-3.5 h-3.5" />, bg: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' },
-  export: { icon: <FileText className="w-3.5 h-3.5" />, bg: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
+  LOGIN: { icon: <LogIn className="w-3.5 h-3.5" />, bg: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' },
+  LOGOUT: { icon: <LogIn className="w-3.5 h-3.5" />, bg: 'bg-slate-100 text-slate-600 dark:bg-slate-850 dark:text-slate-450' },
+  UPLOAD: { icon: <Upload className="w-3.5 h-3.5" />, bg: 'bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-400' },
+  CREATE: { icon: <UserPlus className="w-3.5 h-3.5" />, bg: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400' },
+  UPDATE: { icon: <Edit className="w-3.5 h-3.5" />, bg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400' },
+  DELETE: { icon: <Search className="w-3.5 h-3.5" />, bg: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' },
+  EXPORT: { icon: <FileText className="w-3.5 h-3.5" />, bg: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
 }
 
 const ChartTooltipStyle = {
@@ -40,20 +41,59 @@ const ChartTooltipStyle = {
 
 export function AdminDashboard() {
   const { user } = useAuth()
-  const stats = mockDashboardStats
 
-  const expiring = mockCertifications.filter(
+  // Query dynamic stats
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn: dashboardService.getDashboardStats,
+  })
+
+  // Query recent audit logs
+  const { data: auditLogs = [], isLoading: auditLoading } = useQuery({
+    queryKey: ['recent-audit-logs'],
+    queryFn: async () => {
+      const logs = await auditService.getAuditLogs()
+      return logs.slice(0, 5) // Get latest 5 actions
+    }
+  })
+
+  // Query expiring/expired certifications
+  const { data: certifications = [], isLoading: certsLoading } = useQuery({
+    queryKey: ['dashboard-certifications'],
+    queryFn: () => certificationService.getCertifications(),
+  })
+
+  if (statsLoading || auditLoading || certsLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+        <p className="text-muted-foreground text-sm font-medium">Aggregating system statistics...</p>
+      </div>
+    )
+  }
+
+  if (statsError || !stats) {
+    return (
+      <div className="p-6 text-center border border-border rounded-xl bg-card max-w-xl mx-auto mt-10">
+        <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+        <h3 className="text-lg font-semibold mb-1">Dashboard Load Failed</h3>
+        <p className="text-muted-foreground text-sm">{(statsError as any)?.message || 'Failed to aggregate PostgreSQL database metrics.'}</p>
+      </div>
+    )
+  }
+
+  const expiring = certifications.filter(
     (c) => getCertificationStatus(c.expiry_date) !== 'valid'
   )
 
-  const activityItems = mockRecentActivity.map((a) => ({
+  const activityItems = auditLogs.map((a) => ({
     id: a.id,
-    icon: ACTIVITY_ICONS[a.type]?.icon,
-    iconBg: ACTIVITY_ICONS[a.type]?.bg,
-    title: a.title,
-    description: a.description,
-    user: a.user,
-    timestamp: a.timestamp,
+    icon: ACTIVITY_ICONS[a.action]?.icon || <Clock className="w-3.5 h-3.5" />,
+    iconBg: ACTIVITY_ICONS[a.action]?.bg || 'bg-muted text-muted-foreground',
+    title: `${a.action} · ${a.module}`,
+    description: a.details,
+    user: a.user_name,
+    timestamp: a.created_at,
   }))
 
   return (
@@ -71,14 +111,11 @@ export function AdminDashboard() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatsCard index={0} title="Total Students" value={stats.total_students} color="blue"
-          icon={<Users className="w-5 h-5" />}
-          trend={{ value: 5.2, label: 'vs last month' }} />
+          icon={<Users className="w-5 h-5" />} />
         <StatsCard index={1} title="Total Employees" value={stats.total_employees} color="teal"
-          icon={<UserCheck className="w-5 h-5" />}
-          trend={{ value: 2.1, label: 'vs last month' }} />
+          icon={<UserCheck className="w-5 h-5" />} />
         <StatsCard index={2} title="Total Documents" value={stats.total_documents} color="purple"
-          icon={<FileText className="w-5 h-5" />}
-          trend={{ value: 8.4, label: 'vs last month' }} />
+          icon={<FileText className="w-5 h-5" />} />
         <StatsCard index={3} title="OCR Indexed" value={stats.ocr_indexed} color="green"
           icon={<Search className="w-5 h-5" />}
           description="of total documents" />
@@ -86,8 +123,7 @@ export function AdminDashboard() {
           icon={<Award className="w-5 h-5" />}
           description="in next 90 days" />
         <StatsCard index={5} title="Messages Sent" value={stats.messages_sent} color="red"
-          icon={<MessageSquare className="w-5 h-5" />}
-          trend={{ value: 12.3, label: 'vs last month' }} />
+          icon={<MessageSquare className="w-5 h-5" />} />
       </div>
 
       {/* Charts Row 1 */}
@@ -102,7 +138,7 @@ export function AdminDashboard() {
               <h3 className="font-semibold text-foreground">Student Growth</h3>
               <p className="text-xs text-muted-foreground mt-0.5">Enrollment trend over time</p>
             </div>
-            <span className="badge badge-info">2025</span>
+            <span className="badge badge-info">2026</span>
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={stats.student_growth}>
@@ -134,31 +170,39 @@ export function AdminDashboard() {
             <h3 className="font-semibold text-foreground">Employee Distribution</h3>
             <p className="text-xs text-muted-foreground mt-0.5">By department</p>
           </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie
-                data={stats.employee_departments}
-                cx="50%" cy="50%" innerRadius={45} outerRadius={75}
-                paddingAngle={3} dataKey="value"
-              >
-                {stats.employee_departments.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
+          {stats.employee_departments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[180px] text-muted-foreground text-xs">
+              No department data available.
+            </div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={stats.employee_departments}
+                    cx="50%" cy="50%" innerRadius={45} outerRadius={75}
+                    paddingAngle={3} dataKey="value"
+                  >
+                    {stats.employee_departments.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip {...ChartTooltipStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-3 space-y-1.5 max-h-36 overflow-y-auto">
+                {stats.employee_departments.map((d) => (
+                  <div key={d.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                      <span className="text-muted-foreground">{d.name}</span>
+                    </div>
+                    <span className="font-medium">{d.value}</span>
+                  </div>
                 ))}
-              </Pie>
-              <Tooltip {...ChartTooltipStyle} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="mt-3 space-y-1.5">
-            {stats.employee_departments.map((d) => (
-              <div key={d.name} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
-                  <span className="text-muted-foreground">{d.name}</span>
-                </div>
-                <span className="font-medium">{d.value}</span>
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </motion.div>
       </div>
 
@@ -219,7 +263,11 @@ export function AdminDashboard() {
           className="rounded-xl border border-border bg-card p-5"
         >
           <h3 className="font-semibold text-foreground mb-4">Recent Activity</h3>
-          <ActivityTimeline items={activityItems} />
+          {activityItems.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-6 text-center">No recent activity logged.</p>
+          ) : (
+            <ActivityTimeline items={activityItems} />
+          )}
         </motion.div>
 
         {/* Upcoming Tasks */}
@@ -229,37 +277,41 @@ export function AdminDashboard() {
         >
           <h3 className="font-semibold text-foreground mb-4">Upcoming Tasks</h3>
           <div className="space-y-3">
-            {expiring.map((cert) => {
-              const days = getDaysUntil(cert.expiry_date)
-              const status = getCertificationStatus(cert.expiry_date)
-              return (
-                <div key={cert.id} className="flex items-start gap-3 p-3 rounded-xl bg-muted/50 border border-border/50">
-                  <div className={cn(
-                    'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
-                    status === 'expired' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' :
-                    'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
-                  )}>
-                    <Award className="w-4 h-4" />
+            {expiring.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">No expiring or expired employee certifications.</p>
+            ) : (
+              expiring.slice(0, 3).map((cert) => {
+                const days = getDaysUntil(cert.expiry_date)
+                const status = getCertificationStatus(cert.expiry_date)
+                return (
+                  <div key={cert.id} className="flex items-start gap-3 p-3 rounded-xl bg-muted/50 border border-border/50">
+                    <div className={cn(
+                      'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+                      status === 'expired' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' :
+                      'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                    )}>
+                      <Award className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">{cert.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{cert.employee_name}</p>
+                    </div>
+                    <span className={cn(
+                      'badge shrink-0',
+                      status === 'expired' ? 'badge-danger' : 'badge-warning'
+                    )}>
+                      {status === 'expired' ? 'Expired' : `${Math.abs(days)}d left`}
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{cert.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{cert.employee_name}</p>
-                  </div>
-                  <span className={cn(
-                    'badge shrink-0',
-                    status === 'expired' ? 'badge-danger' : 'badge-warning'
-                  )}>
-                    {status === 'expired' ? 'Expired' : `${Math.abs(days)}d left`}
-                  </span>
-                </div>
-              )
-            })}
+                )
+              })
+            )}
 
             {/* Pending items */}
             {[
-              { icon: <Loader className="w-4 h-4" />, title: 'OCR Processing', desc: '3 documents queued', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' },
-              { icon: <Bell className="w-4 h-4" />, title: 'Scheduled Notification', desc: 'PTM reminder - Tomorrow 9AM', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' },
-              { icon: <Clock className="w-4 h-4" />, title: 'Report Generation', desc: 'Q2 Report due in 5 days', color: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' },
+              { icon: <Loader className="w-4 h-4" />, title: 'OCR Processing', desc: '0 documents queued', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' },
+              { icon: <Bell className="w-4 h-4" />, title: 'Scheduled Notification', desc: 'PTM reminder - Auto-trigger active', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' },
+              { icon: <Clock className="w-4 h-4" />, title: 'Report Generation', desc: 'Retention scan runs weekly', color: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' },
             ].map((task) => (
               <div key={task.title} className="flex items-start gap-3 p-3 rounded-xl bg-muted/50 border border-border/50">
                 <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', task.color)}>

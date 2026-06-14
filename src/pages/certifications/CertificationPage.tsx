@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Award, Filter, Calendar } from 'lucide-react'
+import { Award, Filter, Calendar, AlertTriangle } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { DataTable, type Column } from '@/components/common/DataTable'
 import { SearchBar } from '@/components/common/SearchBar'
 import { StatsCard } from '@/components/common/StatsCard'
+import { SkeletonTable } from '@/components/common/SkeletonLoader'
+import { certificationService } from '@/services/certificationService'
 import type { Certification } from '@/types'
-import { mockCertifications } from '@/data/mockData'
 import { cn, formatDate, getDaysUntil, getCertificationStatus } from '@/lib/utils'
 
 const STATUS_STYLES = { valid: 'badge-success', expiring: 'badge-warning', expired: 'badge-danger' }
@@ -17,16 +19,21 @@ export function CertificationPage() {
   const [dayFilter, setDayFilter] = useState<DayFilter>('all')
   const [statusFilter, setStatusFilter] = useState('')
 
-  const filtered = mockCertifications.filter((c) => {
+  const { data: certifications = [], isLoading, error, refetch } = useQuery<Certification[]>({
+    queryKey: ['certifications'],
+    queryFn: () => certificationService.getCertifications(),
+  })
+
+  const filtered = certifications.filter((c) => {
     const days = getDaysUntil(c.expiry_date)
     const matchDay = dayFilter === 'all' || (days >= 0 && days <= Number(dayFilter))
     const matchStatus = !statusFilter || getCertificationStatus(c.expiry_date) === statusFilter
     return matchDay && matchStatus
   })
 
-  const valid = mockCertifications.filter((c) => getCertificationStatus(c.expiry_date) === 'valid').length
-  const expiring = mockCertifications.filter((c) => getCertificationStatus(c.expiry_date) === 'expiring').length
-  const expired = mockCertifications.filter((c) => getCertificationStatus(c.expiry_date) === 'expired').length
+  const valid = certifications.filter((c) => getCertificationStatus(c.expiry_date) === 'valid').length
+  const expiring = certifications.filter((c) => getCertificationStatus(c.expiry_date) === 'expiring').length
+  const expired = certifications.filter((c) => getCertificationStatus(c.expiry_date) === 'expired').length
 
   const columns: Column<Certification>[] = [
     { key: 'name', header: 'Certification Name', sortable: true },
@@ -69,7 +76,7 @@ export function CertificationPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatsCard title="Valid" value={valid} color="green" icon={<Award className="w-5 h-5" />} />
         <StatsCard index={1} title="Expiring Soon" value={expiring} color="amber" icon={<Calendar className="w-5 h-5" />} description="within 90 days" />
         <StatsCard index={2} title="Expired" value={expired} color="red" icon={<Award className="w-5 h-5" />} />
@@ -81,7 +88,7 @@ export function CertificationPage() {
         <div className="flex items-center gap-2">
           <Filter className="w-4 h-4 text-muted-foreground" />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-background focus:outline-none">
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-background focus:outline-none focus:ring-2 focus:ring-primary/30">
             <option value="">All Status</option>
             <option value="valid">Valid</option>
             <option value="expiring">Expiring</option>
@@ -99,13 +106,26 @@ export function CertificationPage() {
         </div>
       </div>
 
-      <DataTable<Certification>
-        data={filtered} columns={columns}
-        searchQuery={search}
-        searchFields={['name', 'employee_name', 'issued_by']}
-        exportFilename="certifications"
-        emptyMessage="No certifications found."
-      />
+      {isLoading ? (
+        <SkeletonTable rows={6} cols={6} />
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900/30 p-6 flex flex-col items-center text-center">
+          <AlertTriangle className="w-8 h-8 text-red-500 mb-3" />
+          <h3 className="font-semibold text-red-900 dark:text-red-400">Failed to load certifications</h3>
+          <p className="text-sm text-red-700 dark:text-red-500/80 mt-1 mb-4">{(error as any).message || 'An unexpected error occurred.'}</p>
+          <button onClick={() => refetch()} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-colors">
+            Try Again
+          </button>
+        </div>
+      ) : (
+        <DataTable<Certification>
+          data={filtered} columns={columns}
+          searchQuery={search}
+          searchFields={['name', 'employee_name', 'issued_by']}
+          exportFilename="certifications"
+          emptyMessage="No certifications found."
+        />
+      )}
     </div>
   )
 }
