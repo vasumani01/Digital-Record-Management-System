@@ -1,60 +1,101 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import type { User, UserRole } from '@/types'
-import { mockUsers } from '@/data/mockData'
+import { supabase } from '@/lib/supabase'
 
 interface AuthContextValue {
   user: User | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (email: string, password: string, remember?: boolean) => Promise<void>
-  logout: () => void
+  login: (email: string, password: string) => Promise<void>
+  logout: () => Promise<void>
   hasRole: (role: UserRole) => boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-const SESSION_KEY = 'drms_session'
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Restore session on mount
-  useEffect(() => {
-    const saved = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY)
-    if (saved) {
-      try {
-        setUser(JSON.parse(saved))
-      } catch {
-        // ignore
+  // Fetch user profile from database based on auth UID
+  const fetchProfile = useCallback(async (userId: string, email: string): Promise<User | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error) {
+        console.error('Error fetching user profile:', error.message)
+        return null
       }
+
+      return data as User
+    } catch (err) {
+      console.error('Unexpected error fetching profile:', err)
+      return null
     }
-    setIsLoading(false)
   }, [])
 
-  const login = useCallback(async (email: string, _password: string, remember = false) => {
+  // Listen for auth state changes on mount
+  useEffect(() => {
+    let active = true
+
+    // Check initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!active) return
+      if (session) {
+        fetchProfile(session.user.id, session.user.email || '').then((profile) => {
+          if (active && profile) {
+            setUser(profile)
+          }
+          setIsLoading(false)
+        })
+      } else {
+        setIsLoading(false)
+      }
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!active) return
+      if (event === 'SIGNED_IN' && session) {
+        setIsLoading(true)
+        const profile = await fetchProfile(session.user.id, session.user.email || '')
+        if (active && profile) {
+          setUser(profile)
+        }
+        setIsLoading(false)
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setIsLoading(false)
+      }
+    })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [fetchProfile])
+
+  const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true)
-    // Simulate network delay
-    await new Promise((r) => setTimeout(r, 1000))
-
-    // Mock authentication: any password works, role determined by email
-    let loggedInUser: User
-    if (email.toLowerCase().includes('teacher')) {
-      loggedInUser = mockUsers.teacher
-    } else {
-      loggedInUser = mockUsers.admin
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      setIsLoading(false)
+      throw error
     }
-
-    const store = remember ? localStorage : sessionStorage
-    store.setItem(SESSION_KEY, JSON.stringify(loggedInUser))
-    setUser(loggedInUser)
-    setIsLoading(false)
   }, [])
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(SESSION_KEY)
-    sessionStorage.removeItem(SESSION_KEY)
+  const logout = useCallback(async () => {
+    setIsLoading(true)
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      setIsLoading(false)
+      throw error
+    }
     setUser(null)
+    setIsLoading(false)
   }, [])
 
   const hasRole = useCallback((role: UserRole) => user?.role === role, [user])
